@@ -301,6 +301,27 @@ selective ground-truth targets (for example, cloud-sync `*-checkpoint` files)
 are reported and skipped before the image limit is applied. Pass
 `--strict-pairs` to treat any such dataset inconsistency as an error.
 
+Append learned full-reference and no-reference perceptual metrics without
+rerunning restoration:
+
+```bash
+python eval_perceptual_metrics.py \
+  --input-csv outputs/evaluation/selective_control/metrics_per_image.csv \
+  --torch-home /path/to/model-cache/torch \
+  --output-dir outputs/evaluation/selective_perceptual \
+  --device cuda:0
+```
+
+The default full-reference metrics are DISTS, PieAPP, and LPIPS-VGG. The
+default no-reference metrics are CLIPIQA, MANIQA, MUSIQ, LIQE, and NIMA.
+Models are loaded and released one at a time. Successful metrics are written
+incrementally to `metrics_per_image_extended.csv`,
+`metrics_summary_extended.csv`, and `metrics_extended.json`; an independent
+model failure therefore does not discard previously completed results. Use
+`--max-images-per-group 1` to evaluate ten images as a smoke test. NIMA is an
+aesthetic score rather than a restoration-fidelity measure and should be
+reported separately from full-reference metrics.
+
 #### Identity inference: `inference_identity.py`
 
 Use this command to inspect the model output under the learned identity
