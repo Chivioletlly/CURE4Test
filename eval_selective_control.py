@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,8 @@ def discover_jobs(
     data_root: str | Path,
     output_dir: str | Path,
     max_images: int | None = None,
+    *,
+    strict_pairs: bool = False,
 ) -> list[SelectiveJob]:
     if max_images is not None and max_images <= 0:
         raise ValueError("--max-images must be positive")
@@ -64,7 +67,7 @@ def discover_jobs(
     main_root, sub_root = resolve_dataset_roots(data_root)
     image_root = Path(output_dir) / "images"
     jobs: list[SelectiveJob] = []
-    missing_targets: list[Path] = []
+    unpaired_sources: list[tuple[Path, tuple[Path, ...]]] = []
 
     for source_prompt in TWO_FACTOR_PROMPTS:
         source_dir = main_root / source_prompt
@@ -75,37 +78,56 @@ def discover_jobs(
             for path in source_dir.rglob("*")
             if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
         )
-        if max_images is not None:
-            sources = sources[:max_images]
         if not sources:
             raise ValueError(f"No input images found under {source_dir}")
 
         first, second = source_prompt.split("_")
-        for remove, preserve in ((first, second), (second, first)):
+        directions = ((first, second), (second, first))
+        paired_sources: list[tuple[Path, dict[str, Path]]] = []
+        for source in sources:
+            stem = source.stem
+            targets = {
+                remove: sub_root / source_prompt / stem / f"{stem}_{preserve}_.png"
+                for remove, preserve in directions
+            }
+            missing = tuple(path for path in targets.values() if not path.is_file())
+            if missing:
+                unpaired_sources.append((source, missing))
+            else:
+                paired_sources.append((source, targets))
+
+        if max_images is not None:
+            paired_sources = paired_sources[:max_images]
+        if not paired_sources:
+            raise ValueError(f"No fully paired source/target images found for {source_prompt}")
+
+        for remove, preserve in directions:
             group_root = image_root / source_prompt / f"remove_{remove}"
-            for source in sources:
-                stem = source.stem
-                target = sub_root / source_prompt / stem / f"{stem}_{preserve}_.png"
-                if not target.is_file():
-                    missing_targets.append(target)
-                    continue
+            for source, targets in paired_sources:
                 jobs.append(
                     SelectiveJob(
                         source_prompt=source_prompt,
                         remove=remove,
                         preserve=preserve,
                         source=source,
-                        target=target,
+                        target=targets[remove],
                         destination=group_root / source.name,
                     )
                 )
 
-    if missing_targets:
-        preview = "\n".join(f"  - {path}" for path in missing_targets[:10])
-        suffix = "\n  ..." if len(missing_targets) > 10 else ""
-        raise FileNotFoundError(
-            f"Missing {len(missing_targets)} selective target image(s):\n{preview}{suffix}"
+    if unpaired_sources:
+        preview = "\n".join(
+            f"  - {source} (missing: {', '.join(str(path) for path in missing)})"
+            for source, missing in unpaired_sources[:10]
         )
+        suffix = "\n  ..." if len(unpaired_sources) > 10 else ""
+        message = (
+            f"Found {len(unpaired_sources)} source image(s) without complete selective targets:\n"
+            f"{preview}{suffix}"
+        )
+        if strict_pairs:
+            raise FileNotFoundError(message)
+        print(f"warning: {message}\nSkipping unpaired source image(s).", file=sys.stderr)
     return jobs
 
 
@@ -147,6 +169,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         help="Optional maximum number of inputs per source degradation (smoke testing)",
     )
+    parser.add_argument(
+        "--strict-pairs",
+        action="store_true",
+        help="Fail instead of skipping source images whose selective targets are missing",
+    )
     return parser.parse_args(argv)
 
 
@@ -180,7 +207,12 @@ def _load_lpips(backbone: str, device: torch.device):
 @torch.inference_mode()
 def run(args: argparse.Namespace) -> dict[str, object]:
     output_dir = Path(args.output_dir)
-    jobs = discover_jobs(args.data_root, output_dir, args.max_images)
+    jobs = discover_jobs(
+        args.data_root,
+        output_dir,
+        args.max_images,
+        strict_pairs=args.strict_pairs,
+    )
     restorer, encoder, device = load_runtime(
         args.checkpoint,
         args.embedder_checkpoint,

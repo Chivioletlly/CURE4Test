@@ -296,7 +296,10 @@ This produces ten result groups under `images/` (`5 source prompts × 2 removal
 directions`) and writes mean PSNR, SSIM, and LPIPS to `metrics_summary.csv`.
 Per-image values are stored in `metrics_per_image.csv`, and the complete report
 is also available as `metrics.json`. Pass `--max-images 1` for a quick smoke
-test that generates exactly ten restored images.
+test that generates exactly ten restored images. Source images without both
+selective ground-truth targets (for example, cloud-sync `*-checkpoint` files)
+are reported and skipped before the image limit is applied. Pass
+`--strict-pairs` to treat any such dataset inconsistency as an error.
 
 #### Identity inference: `inference_identity.py`
 

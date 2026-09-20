@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from eval_selective_control import TWO_FACTOR_PROMPTS, discover_jobs, resolve_dataset_roots
 
 
@@ -41,3 +43,23 @@ def test_discover_jobs_builds_ten_selective_directions(tmp_path: Path) -> None:
     assert low_haze_remove_low.destination == (
         tmp_path / "outputs" / "images" / "low_haze" / "remove_low" / "sample_0.png"
     )
+
+
+def test_unpaired_checkpoint_artifacts_are_skipped_before_limit(tmp_path: Path) -> None:
+    make_dataset(tmp_path)
+    artifact = tmp_path / "half_test" / "main_data" / "low_haze" / "00000-checkpoint.png"
+    artifact.touch()
+
+    jobs = discover_jobs(tmp_path, tmp_path / "outputs", max_images=1)
+
+    assert len(jobs) == 10
+    assert all(job.source.name == "sample_0.png" for job in jobs)
+
+
+def test_strict_pairs_rejects_unpaired_sources(tmp_path: Path) -> None:
+    make_dataset(tmp_path)
+    artifact = tmp_path / "half_test" / "main_data" / "low_haze" / "00000-checkpoint.png"
+    artifact.touch()
+
+    with pytest.raises(FileNotFoundError, match="without complete selective targets"):
+        discover_jobs(tmp_path, tmp_path / "outputs", strict_pairs=True)
