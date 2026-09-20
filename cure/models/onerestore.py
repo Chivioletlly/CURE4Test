@@ -4,6 +4,8 @@ Module attribute names intentionally match the original implementation so that
 the released legacy checkpoints can be loaded without remapping model keys.
 """
 
+from __future__ import annotations
+
 import math
 import numbers
 
