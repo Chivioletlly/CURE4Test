@@ -278,6 +278,26 @@ The command validates that every requested factor occurs in `--source-prompt`.
 If `--input` is omitted, it reads
 `data/half_test/main_data/<source-prompt>`.
 
+#### Five-pair selective benchmark: `eval_selective_control.py`
+
+Run both removal directions for all five two-factor degradations and evaluate
+each restored image against its matching CCDD-11 partial target:
+
+```bash
+python eval_selective_control.py \
+  --data-root /path/to/CCDD-11 \
+  --checkpoint checkpoints/CURE_restorer.tar \
+  --embedder-checkpoint checkpoints/OneRestore_embedder.tar \
+  --output-dir outputs/evaluation/selective_control \
+  --device cuda:0
+```
+
+This produces ten result groups under `images/` (`5 source prompts × 2 removal
+directions`) and writes mean PSNR, SSIM, and LPIPS to `metrics_summary.csv`.
+Per-image values are stored in `metrics_per_image.csv`, and the complete report
+is also available as `metrics.json`. Pass `--max-images 1` for a quick smoke
+test that generates exactly ten restored images.
+
 #### Identity inference: `inference_identity.py`
 
 Use this command to inspect the model output under the learned identity
